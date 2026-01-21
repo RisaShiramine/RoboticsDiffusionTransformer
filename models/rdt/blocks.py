@@ -115,9 +115,9 @@ class CrossAttention(nn.Module):
         
         if self.fused_attn:
             x = F.scaled_dot_product_attention(
-                query=q,
-                key=k,
-                value=v,
+                q,
+                k,
+                v,
                 dropout_p=self.attn_drop.p if self.training else 0.,
                 attn_mask=mask
             )
