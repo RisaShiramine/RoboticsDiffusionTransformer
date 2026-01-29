@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+# DeepSpeed / ZeRO stage-2 checkpoint (too large)
+models/mp_rank_00_model_states.pt
 
 # C extensions
 *.so
