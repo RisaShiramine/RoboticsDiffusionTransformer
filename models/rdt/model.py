@@ -152,11 +152,36 @@ class RDT(nn.Module):
         img_c = img_c + self.img_cond_pos_embed
 
         # Forward pass
-        conds = [lang_c, img_c]
-        masks = [lang_mask, img_mask]
+        # conds = [lang_c, img_c]
+        # masks = [lang_mask, img_mask]
+        
+        # Concatenate conditions for full-layer attention
+        # Shape: [B, Lang_Len + Img_Len, D]
+        combined_cond = torch.cat([lang_c, img_c], dim=1)
+        # Shape: [B, Lang_Len + Img_Len]
+        combined_mask = None
+        if lang_mask is not None and img_mask is not None:
+            combined_mask = torch.cat([lang_mask, img_mask], dim=1)
+        elif lang_mask is None and img_mask is not None:
+            # If lang_mask is None, it means all True (valid)
+            # Create a full True mask for lang
+            lang_valid = torch.ones(
+                (lang_c.shape[0], lang_c.shape[1]), 
+                dtype=torch.bool, device=lang_c.device
+            )
+            combined_mask = torch.cat([lang_valid, img_mask], dim=1)
+        elif lang_mask is not None and img_mask is None:
+             # Same fallback for img
+            img_valid = torch.ones(
+                (img_c.shape[0], img_c.shape[1]), 
+                dtype=torch.bool, device=img_c.device
+            )
+            combined_mask = torch.cat([lang_mask, img_valid], dim=1)
+        
         for i, block in enumerate(self.blocks):
-            c, mask = conds[i%2], masks[i%2]
-            x = block(x, c, mask)                       # (B, T+1, D)
+            # c, mask = conds[i%2], masks[i%2]
+            # Use combined condition for every layer
+            x = block(x, combined_cond, combined_mask)                       # (B, T+1, D)
         # Inject the language condition at the final layer
         x = self.final_layer(x)                         # (B, T+1, out_channels)
 
