@@ -5,6 +5,11 @@ in `pretrain_datasets.json` or `pretrain_datasets.json`.
 
 import json
 import argparse
+import sys
+import os
+
+# Add the project root to sys.path to allow imports from project root
+sys.path.append(os.getcwd())
 
 import numpy as np
 from tqdm import tqdm

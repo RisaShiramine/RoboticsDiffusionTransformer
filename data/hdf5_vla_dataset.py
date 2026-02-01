@@ -76,21 +76,53 @@ class HDF5VLADataset:
                 index = np.random.randint(0, len(self.file_paths))
     
     def parse_hdf5_file_state_only(self, file_path):
-        """只读取状态，用于快速计算长度"""
+        """只读取状态，用于快速计算长度和统计信息"""
         try:
             with h5py.File(file_path, 'r') as f:
-                # RobotTwin 似乎没有直接的 qpos (proprioception)，我们暂时用 joint_action 代替
+                # RobotTwin: joint_action is used as state
                 if 'joint_action' not in f:
                     return False, None
                 
-                # 读取 left_arm (N, 6)
-                qpos = f['joint_action']['left_arm'][:] 
+                # 1. 加载关节数据
+                # RoboTwin: left_arm (6), left_gripper (1), right_arm (6), right_gripper (1)
+                left_arm = f['joint_action']['left_arm'][:]
+                left_gripper = f['joint_action']['left_gripper'][:].reshape(-1, 1)
+                right_arm = f['joint_action']['right_arm'][:]
+                right_gripper = f['joint_action']['right_gripper'][:].reshape(-1, 1)
+                
+                # 拼接成 (N, 14) 的向量 [left_arm, left_gripper, right_arm, right_gripper]
+                qpos = np.concatenate([left_arm, left_gripper, right_arm, right_gripper], axis=1)
                 num_steps = qpos.shape[0]
-                if num_steps < 32: # 太短的数据丢弃
+
+                if num_steps < self.CHUNK_SIZE + 1: # 太短的数据丢弃
                     return False, None
                     
-                # 返回一个 dummy state 即可，只要长度对
-                state = np.zeros((num_steps, self.STATE_DIM))
+                # 辅助函数：将 14维数据填充到 128维的统一向量中
+                def fill_in_state(values):
+                    # 根据 configs/state_vec.py 的映射
+                    # Values shape: (..., 14)
+                    # 0-5: left arm joints -> indices [50-55]
+                    # 6: left gripper -> index [60]
+                    # 7-12: right arm joints -> indices [0-5]
+                    # 13: right gripper -> index [10]
+                    
+                    uni_vec = np.zeros(values.shape[:-1] + (self.STATE_DIM,))
+                    
+                    # Left Arm (6 joints)
+                    for i in range(6):
+                        uni_vec[..., 50+i] = values[..., 0+i] # left_arm is index 0-5
+                    # Left Gripper
+                    uni_vec[..., 60] = values[..., 6] # left_gripper is index 6
+                    
+                    # Right Arm (6 joints)
+                    for i in range(6):
+                        uni_vec[..., 0+i] = values[..., 7+i] # right_arm is index 7-12
+                    # Right Gripper
+                    uni_vec[..., 10] = values[..., 13] # right_gripper is index 13
+                    
+                    return uni_vec
+
+                state = fill_in_state(qpos)
                 return True, {"state": state}
         except Exception as e:
             print(f"Error reading {file_path}: {e}")

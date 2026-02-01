@@ -36,21 +36,23 @@ def log_sample_res(
         image_embeds = image_embeds.reshape((batch_size, -1, vision_encoder.hidden_size))
         
         lang_attn_mask = batch["lang_attn_mask"]
-        text_embeds = batch["lang_embeds"].to(dtype=weight_dtype) \
-            if args.precomp_lang_embed \
-            else text_encoder(
+        if args.precomp_lang_embed:
+            text_embeds = batch["lang_embeds"].to(dtype=weight_dtype)
+        else:
+            text_embeds = text_encoder(
                 input_ids=batch["input_ids"],
                 attention_mask=lang_attn_mask
             )["last_hidden_state"].detach()
             
-        pred_actions = rdt.predict_action(
-            lang_tokens=text_embeds,
-            lang_attn_mask=lang_attn_mask,
-            img_tokens=image_embeds,
-            state_tokens=states,
-            action_mask=state_elem_mask.unsqueeze(1),
-            ctrl_freqs=ctrl_freqs
-        )
+        with accelerator.autocast():
+            pred_actions = rdt.predict_action(
+                lang_tokens=text_embeds,
+                lang_attn_mask=lang_attn_mask,
+                img_tokens=image_embeds,
+                state_tokens=states,
+                action_mask=state_elem_mask.unsqueeze(1),
+                ctrl_freqs=ctrl_freqs
+            )
         
         num_steps = pred_actions.shape[1]
         expanded_state_elem_mask = state_elem_mask.unsqueeze(1).tile((1, num_steps, 1)).float()
